@@ -202,6 +202,7 @@ def _get_mlp_module_spec(
     num_experts: Optional[int] = None,
     moe_grouped_gemm: Optional[bool] = False,
     fp8: Optional[str] = None,
+    flash = None
 ) -> ModuleSpec:
     """Helper function to get module spec for MLP/MoE"""
     if num_experts is None:

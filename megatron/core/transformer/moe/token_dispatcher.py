@@ -4,6 +4,7 @@ from abc import abstractmethod
 from typing import List, Optional, Tuple
 
 import torch
+import time
 
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.tensor_parallel.mappings import (
@@ -312,7 +313,7 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
     """
 
     def __init__(
-        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig
+        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig, flash = None
     ) -> None:
         """
         Initialize the AlltoAll token dispatcher.
@@ -378,6 +379,8 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         self.cuda_sync_point = "no_sync"
 
         self.shared_experts = None
+        # pass initialized flash here
+        self.flash = flash
 
     def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         """
@@ -515,6 +518,7 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         assert indices.dim() == 2, "Expected 2D tensor for indices"
         hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
         tokens_per_expert = self.preprocess(indices)
+        print("[Rank {}] - tokens_per_expert: {}".format(torch.distributed.get_rank(), tokens_per_expert.item()),flush=True)
 
         if self.shared_experts is not None:
             self.shared_experts.pre_forward_comm(hidden_states.view(self.hidden_shape))
@@ -533,6 +537,9 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # Perform expert parallel AlltoAll communication
         if self.cuda_sync_point == "before_ep_alltoall":
             torch.cuda.current_stream().synchronize()
+
+        print("[Rank {}] - input_splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
+        print("[Rank {}] - output_splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
         global_input_tokens = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             permutated_local_input_tokens,
