@@ -91,6 +91,8 @@ from . import one_logger_utils
 
 from . import ft_integration
 
+import fastalltoall.flash
+
 stimer = StragglerDetector()
 
 
@@ -261,6 +263,17 @@ def pretrain(
         get_embedding_ranks=get_embedding_ranks,
         get_position_embedding_ranks=get_position_embedding_ranks
     )
+
+    # init flash here
+    device_count = torch.cuda.device_count()
+    this_rank = torch.distributed.get_rank()
+    world_size = torch.distributed.get_world_size()
+    if this_rank == 0:
+        commID = torch.cuda.nccl.unique_id()
+        print(commID)
+        print(len(commID))
+
+    # flash_meta = fastalltoall.flash.init_flash(this_rank, world_size, world_size // device_count, device_count, commID)
 
     args = get_args()
     timers = get_timers()
