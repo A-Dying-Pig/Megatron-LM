@@ -1,0 +1,3 @@
+[submodule "fastalltoall"]
+	path = fastalltoall
+	url = git@github.com:A-Dying-Pig/fastalltoall.git

@@ -91,7 +91,10 @@ from . import one_logger_utils
 
 from . import ft_integration
 
-import fastalltoall.flash
+
+import fastalltoall.FlashAllToAll
+import numpy as np
+
 
 stimer = StragglerDetector()
 
@@ -268,12 +271,15 @@ def pretrain(
     device_count = torch.cuda.device_count()
     this_rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
+    id_tensor = torch.zeros(128)
     if this_rank == 0:
         commID = torch.cuda.nccl.unique_id()
-        print(commID)
-        print(len(commID))
-
-    # flash_meta = fastalltoall.flash.init_flash(this_rank, world_size, world_size // device_count, device_count, commID)
+        id_tensor = torch.Tensor(np.frombuffer(commID, dtype=np.uint8))
+    id_tensor = id_tensor.cuda()
+    torch.distributed.broadcast(id_tensor, 0)
+    id_tensor = id_tensor.cpu()
+    commID = id_tensor.numpy().astype(np.uint8).tostring()
+    flash_meta = fastalltoall.FlashAllToAll.flash_t(this_rank, world_size, world_size // device_count, device_count, commID)
 
     args = get_args()
     timers = get_timers()
