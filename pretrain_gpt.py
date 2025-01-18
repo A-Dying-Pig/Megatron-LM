@@ -34,9 +34,7 @@ from megatron.core.models.gpt.gpt_layer_specs import (
     get_gpt_layer_with_transformer_engine_spec,
 )
 
-import fastalltoall.FlashAllToAll
-import numpy as np
-from datetime import timedelta
+
 
 stimer = StragglerDetector()
 
@@ -53,43 +51,6 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
     Returns:
         Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
     """
-    # -----------------------------------------------------------------------
-    # FLASH INITIALIATION
-    # -----------------------------------------------------------------------
-    device_count = torch.cuda.device_count()
-    this_rank = torch.distributed.get_rank()
-    world_size = torch.distributed.get_world_size()
-    master_addr = os.environ['MASTER_ADDR']
-    master_port = 31000
-    if this_rank == 0:
-        server_store = torch.distributed.TCPStore(master_addr, master_port, world_size, True, timedelta(seconds=30))
-    else:
-        client_store = torch.distributed.TCPStore(master_addr, master_port, world_size, False)
-
-    if this_rank == 0:
-        id_str = torch.cuda.nccl.unique_id()
-        server_store.set("commID", id_str)
-    else:
-        id_str = client_store.get("commID")
-    torch.distributed.barrier()
-    torch_dtype_map = {
-        torch.float32: 7,
-        torch.float64: 8,
-        torch.float16: 6,
-        torch.bfloat16: 9,
-        torch.uint8: 1,
-        torch.uint32: 3,
-        torch.uint64: 5,
-        torch.int8: 0,
-        torch.int32: 2,
-        torch.int64: 4
-    }
-    args = get_args()
-    flash = fastalltoall.FlashAllToAll.flash_t(this_rank, world_size, world_size // device_count, device_count, args.hidden_size, torch_dtype_map[args.params_dtype], id_str)
-
-    # -----------------------------------------------------------------------
-    # END OF FLASH INITIALIATION
-    # -----------------------------------------------------------------------
 
     args = get_args()
     use_te = args.transformer_impl == "transformer_engine"
@@ -114,7 +75,7 @@ def model_provider(pre_process=True, post_process=True) -> Union[GPTModel, megat
             transformer_layer_spec = import_module(args.spec)
         else:
             if use_te:
-                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention, args.fp8, flash)
+                transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention, args.fp8)
             else:
                 transformer_layer_spec = get_gpt_layer_local_spec(args.num_experts, args.moe_grouped_gemm, args.qk_layernorm, args.multi_latent_attention)
 

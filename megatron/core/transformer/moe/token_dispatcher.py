@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple
 import torch
 import time
 
-from megatron.core import parallel_state, tensor_parallel
+from megatron.core import parallel_state, tensor_parallel, flash
 from megatron.core.tensor_parallel.mappings import (
     _gather_along_first_dim_moe,
     gather_from_sequence_parallel_region,
@@ -312,7 +312,7 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
     """
 
     def __init__(
-        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig, flash = None
+        self, num_local_experts: int, local_expert_indices: List[int], config: TransformerConfig
     ) -> None:
         """
         Initialize the AlltoAll token dispatcher.
@@ -379,7 +379,6 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
 
         self.shared_experts = None
         # pass initialized flash here
-        self.flash = flash
         # Traffic matrix used for flash scheduling
         self.flash_workload = None
 
@@ -548,29 +547,22 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # print("[Rank {}] - input token splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
         # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
 
+        flash_scheduler = flash.get_flash()
+        flash_scheduler.schedule(self.flash_workload)
+        global_input_tokens = tensor_parallel.flash_all_to_all(
+            parallel_state.get_expert_model_parallel_group(),
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+            )
 
-        if self.flash:
-            global_input_tokens = tensor_parallel.flash_all_to_all(
-                self.flash,
-                self.flash_workload,
-                permutated_local_input_tokens,
-                self.output_splits,
-                self.input_splits,
-            )
-            global_input_tokens_baseline = tensor_parallel.all_to_all(
-                parallel_state.get_expert_model_parallel_group(),
-                permutated_local_input_tokens,
-                self.output_splits,
-                self.input_splits,
-            )
-            print(torch.tensor_equal(global_input_tokens, global_input_tokens_baseline))
-        else:
-            global_input_tokens = tensor_parallel.all_to_all(
-                parallel_state.get_expert_model_parallel_group(),
-                permutated_local_input_tokens,
-                self.output_splits,
-                self.input_splits,
-            )
+        # global_input_tokens_baseline = tensor_parallel.all_to_all(
+        #     parallel_state.get_expert_model_parallel_group(),
+        #     permutated_local_input_tokens,
+        #     self.output_splits,
+        #     self.input_splits,
+        # )
+        # print(torch.equal(global_input_tokens, global_input_tokens_baseline))
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)

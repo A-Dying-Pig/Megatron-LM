@@ -10,6 +10,7 @@ from megatron.core.parallel_state import (
     get_tensor_model_parallel_rank,
     get_tensor_model_parallel_world_size,
 )
+from megatron.core import flash
 
 from .utils import split_tensor_along_last_dim
 import numpy as np
@@ -468,7 +469,7 @@ class _ReduceScatterToTensorParallelRegion(torch.autograd.Function):
 
 class _AllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, group, input, output_split_sizes, input_split_sizes, if_backward):
+    def forward(ctx, group, input, output_split_sizes, input_split_sizes):
         """Forward function."""
         ctx.group = group
         ctx.output_split_sizes = output_split_sizes
@@ -490,15 +491,6 @@ class _AllToAll(torch.autograd.Function):
                 dtype=input.dtype,
                 device=torch.cuda.current_device(),
             )
-        if if_backward:
-            print("backward input:")
-            print(input_split_sizes)
-            print("backward output:")
-            print(output_split_sizes)
-            # print("gradient:")
-            # print(input)
-            print("gradient size:")
-            print(input.size())
 
         torch.distributed.all_to_all_single(
             output,
@@ -514,8 +506,7 @@ class _AllToAll(torch.autograd.Function):
         """Backward function."""
         return (
             None,
-            _AllToAll.apply(ctx.group, *grad_output, ctx.input_split_sizes, ctx.output_split_sizes, 1),
-            None,
+            _AllToAll.apply(ctx.group, *grad_output, ctx.input_split_sizes, ctx.output_split_sizes),
             None,
             None,
         )
@@ -524,15 +515,16 @@ class _AllToAll(torch.autograd.Function):
 
 class _FLASHAllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, flash, workload, input, output_split_sizes, input_split_sizes, if_backward):
+    def forward(ctx, group, input, output_split_sizes, input_split_sizes):
         """Forward function."""
-        ctx.flash = flash
-        ctx.workload = workload
+        ctx.group = group
         ctx.output_split_sizes = output_split_sizes
         ctx.input_split_sizes = input_split_sizes
 
-        world_size = flash.get_world_size()
-        server_n = flash.get_server_n()
+        flash_scheduler = flash.get_flash()
+
+        world_size = flash_scheduler.get_world_size()
+        server_n = flash_scheduler.get_server_n()
         # Bypass the function if we are using only 1 GPU.
         if world_size == 1:
             return input
@@ -544,24 +536,12 @@ class _FLASHAllToAll(torch.autograd.Function):
             device=torch.cuda.current_device(),
         )
 
-
-        if if_backward:
-            print("backward input:")
-            print(input_split_sizes)
-            print("backward output:")
-            print(output_split_sizes)
-            # print("gradient:")
-            # print(input)
-            print("gradient size:")
-            print(input.size())
-
         if server_n == 1:
-            flash.all_to_all_v(input, output, input_split_sizes, output_split_sizes)
+            flash_scheduler.all_to_all_v(input, output, input_split_sizes, output_split_sizes)
         else:
-            flash.schedule(workload)
-            flash.init_buffers(input, output)
-            flash.all_to_all()
-            flash.free_buffers()
+            flash_scheduler.init_buffers(input, output)
+            flash_scheduler.all_to_all()
+            flash_scheduler.free_buffers()
         return output
 
     @staticmethod
@@ -569,9 +549,7 @@ class _FLASHAllToAll(torch.autograd.Function):
         """Backward function."""
         return (
             None,
-            None,
-            _FLASHAllToAll.apply(ctx.flash, np.transpose(ctx.workload), *grad_output, ctx.input_split_sizes, ctx.output_split_sizes, 1),
-            None,
+            _FLASHAllToAll.apply(ctx.group, *grad_output, ctx.input_split_sizes, ctx.output_split_sizes),
             None,
             None,
         )
@@ -643,11 +621,11 @@ def reduce_scatter_last_dim_to_tensor_parallel_region(input_):
 
 def all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
     """Wrapper for autograd function"""
-    return _AllToAll.apply(group, input_, output_split_sizes_, input_split_sizes, 0)
+    return _AllToAll.apply(group, input_, output_split_sizes_, input_split_sizes)
 
-def flash_all_to_all(flash, workload, input_, output_split_sizes_, input_split_sizes):
+def flash_all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
     """Wrapper for autograd function"""
-    return _FLASHAllToAll.apply(flash, workload, input_, output_split_sizes_, input_split_sizes, 0)
+    return _FLASHAllToAll.apply(group, input_, output_split_sizes_, input_split_sizes)
 
 def all_to_all_sp2hp(input_):
     """

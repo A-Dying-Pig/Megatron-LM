@@ -85,7 +85,7 @@ class MoELayer(BaseMoELayer):
     """
 
     def __init__(
-        self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None, flash = None
+        self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None
     ):
         self.submodules = submodules
         super(MoELayer, self).__init__(config=config, layer_number=layer_number)
@@ -115,7 +115,7 @@ class MoELayer(BaseMoELayer):
             )
         elif config.moe_token_dispatcher_type == "alltoall":
             self.token_dispatcher = MoEAlltoAllTokenDispatcher(
-                self.num_local_experts, self.local_expert_indices, config=self.config, flash=flash
+                self.num_local_experts, self.local_expert_indices, config=self.config
             )
         elif config.moe_token_dispatcher_type == "alltoall_seq":
             self.token_dispatcher = MoEAlltoAllSEQTokenDispatcher(

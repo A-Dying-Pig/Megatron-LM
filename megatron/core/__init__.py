@@ -25,6 +25,7 @@ mpu = parallel_state
 
 __all__ = [
     "parallel_state",
+    "flash",
     "tensor_parallel",
     "utils",
     "DistributedDataParallel",

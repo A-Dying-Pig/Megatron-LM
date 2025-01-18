@@ -55,7 +55,6 @@ def get_gpt_layer_with_transformer_engine_spec(
     qk_layernorm: Optional[bool] = False,
     multi_latent_attention: Optional[bool] = False,
     fp8: Optional[str] = None,
-    flash = None
 ) -> ModuleSpec:
     """Use this spec to use lower-level Transformer Engine modules (required for fp8 training).
 
@@ -70,7 +69,7 @@ def get_gpt_layer_with_transformer_engine_spec(
         ModuleSpec: Module specification with TE modules
     """
     mlp = _get_mlp_module_spec(
-        use_te=True, num_experts=num_experts, moe_grouped_gemm=moe_grouped_gemm, fp8=fp8, flash=flash
+        use_te=True, num_experts=num_experts, moe_grouped_gemm=moe_grouped_gemm, fp8=fp8
     )
 
     if multi_latent_attention:
@@ -203,7 +202,6 @@ def _get_mlp_module_spec(
     num_experts: Optional[int] = None,
     moe_grouped_gemm: Optional[bool] = False,
     fp8: Optional[str] = None,
-    flash = None
 ) -> ModuleSpec:
     """Helper function to get module spec for MLP/MoE"""
     if num_experts is None:
@@ -246,5 +244,4 @@ def _get_mlp_module_spec(
                     ),
                 ),
             ),
-            params={"flash": flash}
         )

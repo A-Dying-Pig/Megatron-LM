@@ -91,6 +91,7 @@ from . import one_logger_utils
 
 from . import ft_integration
 
+from megatron.core import flash
 
 
 
@@ -266,6 +267,7 @@ def pretrain(
     )
 
     args = get_args()
+    flash.init_flash(args)
     timers = get_timers()
 
     if args.log_progress:
