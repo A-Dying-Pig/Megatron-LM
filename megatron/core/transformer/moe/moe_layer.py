@@ -85,7 +85,7 @@ class MoELayer(BaseMoELayer):
     """
 
     def __init__(
-        self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None
+        self, config: TransformerConfig, submodules: MLPSubmodules = None, layer_number: int = None, flash = None
     ):
         self.submodules = submodules
         super(MoELayer, self).__init__(config=config, layer_number=layer_number)
@@ -115,7 +115,7 @@ class MoELayer(BaseMoELayer):
             )
         elif config.moe_token_dispatcher_type == "alltoall":
             self.token_dispatcher = MoEAlltoAllTokenDispatcher(
-                self.num_local_experts, self.local_expert_indices, config=self.config
+                self.num_local_experts, self.local_expert_indices, config=self.config, flash=flash
             )
         elif config.moe_token_dispatcher_type == "alltoall_seq":
             self.token_dispatcher = MoEAlltoAllSEQTokenDispatcher(
@@ -146,20 +146,20 @@ class MoELayer(BaseMoELayer):
         # process MoE
         def custom_forward(hidden_states):
             probs, indices = self.router(hidden_states)
-            t1 = time.time()
+            # t1 = time.time()
             (dispatched_input, tokens_per_expert) = self.token_dispatcher.token_permutation(
                 hidden_states, probs, indices
             )
-            t2 = time.time()
-            if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
-                print("[Rank {}] - alltoall dispatch: {} s".format(torch.distributed.get_rank(), t2 - t1),flush=True)
+            # t2 = time.time()
+            # if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
+            #     print("[Rank {}] - alltoall dispatch: {} s".format(torch.distributed.get_rank(), t2 - t1),flush=True)
 
             expert_output, mlp_bias = self.experts(dispatched_input, tokens_per_expert)
-            t1 = time.time()
+            # t1 = time.time()
             output, mlp_bias = self.token_dispatcher.token_unpermutation(expert_output, mlp_bias)
-            t2 = time.time()
-            if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
-                print("[Rank {}] - alltoall combine: {} s".format(torch.distributed.get_rank(), t2 - t1),flush=True)
+            # t2 = time.time()
+            # if torch.distributed.get_rank() == torch.distributed.get_world_size() - 1:
+            #     print("[Rank {}] - alltoall combine: {} s".format(torch.distributed.get_rank(), t2 - t1),flush=True)
             if self.use_shared_expert and not self.shared_expert_overlap:
                 # if shared_expert_overlap is True, the expert calculation happens in
                 # the token_dispatcher to overlap communications and computations

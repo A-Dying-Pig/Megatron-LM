@@ -32,7 +32,6 @@ from megatron.core.transformer.transformer_config import TransformerConfig
      num_global_tokens: num_local_tokens*TP*EP
 """
 
-
 class MoETokenDispatcher:
     """
     MoE Token Dispatcher
@@ -381,6 +380,8 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         self.shared_experts = None
         # pass initialized flash here
         self.flash = flash
+        # Traffic matrix used for flash scheduling
+        self.flash_workload = None
 
     def preprocess(self, indices: torch.Tensor) -> torch.Tensor:
         """
@@ -439,12 +440,14 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             # ===================================================
             # Calculate input_splits, output_splits for alltoall/allgather in variable size.
             # ===================================================
+
             self.input_splits = (
                 num_local_tokens_per_expert.reshape(self.ep_size, self.num_local_experts)
                 .sum(axis=1)
                 .to(torch.device("cpu"), non_blocking=True)
                 .numpy()
             )
+
             # Gather the global distribution of tokens across ranks.
             # num_global_tokens_per_expert represents the number of tokens sent to each
             # expert by all ranks.
@@ -454,6 +457,10 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
                 .reshape(self.ep_size, self.tp_size, self.num_experts)
                 .transpose(0, 1)
             )
+            # [tp_size, ep_size, num_experts] -> [tp_size, ep_size, ep_size, num_local_experts]
+            self.flash_workload = num_global_tokens_per_expert.reshape(self.tp_size, self.ep_size, self.ep_size, self.num_local_experts).view(self.tp_size, self.ep_size, self.ep_size, -1).sum(3)
+            # [tp_size, ep_size, ep_size] -> [ep_size, ep_size]
+            self.flash_workload = self.flash_workload[tp_rank].to(torch.device("cpu"), non_blocking=True).numpy()
             # [tp_size, ep_size, num_experts] -> [tp_size, ep_size, num_local_experts]
             num_global_tokens_per_local_expert = num_global_tokens_per_expert[
                 :, :, self.local_expert_indices[0] : self.local_expert_indices[-1] + 1
@@ -518,7 +525,6 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         assert indices.dim() == 2, "Expected 2D tensor for indices"
         hidden_states = hidden_states.view(-1, self.hidden_shape[-1])
         tokens_per_expert = self.preprocess(indices)
-        print("[Rank {}] - tokens_per_expert: {}".format(torch.distributed.get_rank(), tokens_per_expert.item()),flush=True)
 
         if self.shared_experts is not None:
             self.shared_experts.pre_forward_comm(hidden_states.view(self.hidden_shape))
@@ -538,14 +544,34 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         if self.cuda_sync_point == "before_ep_alltoall":
             torch.cuda.current_stream().synchronize()
 
-        print("[Rank {}] - input_splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
-        print("[Rank {}] - output_splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
-        global_input_tokens = tensor_parallel.all_to_all(
-            parallel_state.get_expert_model_parallel_group(),
-            permutated_local_input_tokens,
-            self.output_splits,
-            self.input_splits,
-        )
+        # print("[Rank {}] - workload: {}".format(torch.distributed.get_rank(), self.flash_workload),flush=True)
+        # print("[Rank {}] - input token splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
+        # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
+
+
+        if self.flash:
+            global_input_tokens = tensor_parallel.flash_all_to_all(
+                self.flash,
+                self.flash_workload,
+                permutated_local_input_tokens,
+                self.output_splits,
+                self.input_splits,
+            )
+            global_input_tokens_baseline = tensor_parallel.all_to_all(
+                parallel_state.get_expert_model_parallel_group(),
+                permutated_local_input_tokens,
+                self.output_splits,
+                self.input_splits,
+            )
+            print(torch.tensor_equal(global_input_tokens, global_input_tokens_baseline))
+        else:
+            global_input_tokens = tensor_parallel.all_to_all(
+                parallel_state.get_expert_model_parallel_group(),
+                permutated_local_input_tokens,
+                self.output_splits,
+                self.input_splits,
+            )
+
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)
 

@@ -246,4 +246,5 @@ def _get_mlp_module_spec(
                     ),
                 ),
             ),
+            params={"flash": flash}
         )

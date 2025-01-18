@@ -8,10 +8,10 @@ export CUDA_DEVICE_MAX_CONNECTIONS=1
 
 GPUS_PER_NODE=8
 # Change for multinode config
-MASTER_ADDR=10.4.16.1
+MASTER_ADDR=10.4.16.3
 MASTER_PORT=30000
-NNODES=2
-NODE_RANK=1
+NNODES=1
+NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
 CHECKPOINT_PATH=$1
@@ -49,8 +49,8 @@ MODEL_ARGS=(
 )
 
 MOE_ARGS=(
-    --num-experts 16
-    --expert-model-parallel-size 16
+    --num-experts 8        #logic experts
+    --expert-model-parallel-size 8  # number of GPUs to hold experts
     --moe-router-load-balancing-type aux_loss # options: aux_loss, sinkhorn, None. Default is aux_loss.
     --moe-router-topk 2
     --moe-aux-loss-coeff 1e-2
@@ -106,7 +106,7 @@ LOGGING_ARGS=(
 if [ -n "${WANDB_API_KEY}" ]; then
     LOGGING_ARGS+=(
         --wandb-project ${WANDB_PROJECT:-"Mixtral-Finetuning"}
-        --wandb-exp-name ${WANDB_NAME:-"Mixtral_8x7B"} 
+        --wandb-exp-name ${WANDB_NAME:-"Mixtral_8x7B"}
     )
 fi
 
