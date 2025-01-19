@@ -539,9 +539,12 @@ class _FLASHAllToAll(torch.autograd.Function):
         if server_n == 1:
             flash_scheduler.all_to_all_v(input, output, input_split_sizes, output_split_sizes)
         else:
+            print("flash node > 1")
             flash_scheduler.init_buffers(input, output)
             flash_scheduler.all_to_all()
             flash_scheduler.free_buffers()
+        torch.cuda.current_stream().synchronize()
+        flash_scheduler.synchronize_streams()
         return output
 
     @staticmethod

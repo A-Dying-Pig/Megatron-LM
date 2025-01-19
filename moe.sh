@@ -45,7 +45,7 @@ MODEL_ARGS=(
     --num-query-groups 8
     --no-masked-softmax-fusion
     --no-position-embedding
-     --no-gradient-accumulation-fusion
+    --no-gradient-accumulation-fusion
 )
 
 MOE_ARGS=(
@@ -71,18 +71,16 @@ TRAINING_ARGS=(
     --global-batch-size 1024
     --adam-beta1 0.9
     --adam-beta2 0.95
-    --lr 1e-6
+    --lr 1e-7
     --seed 42
     --train-iters 500000
     --lr-decay-iters 320000
     --lr-decay-style cosine
-    --min-lr 1.0e-7
+    --min-lr 1.0e-8
     --weight-decay 0.1
     --lr-warmup-iters 1000
     --clip-grad 1.0
     --bf16
-    --overlap-grad-reduce
-    --overlap-param-gather
 )
 
 MODEL_PARALLEL_ARGS=(

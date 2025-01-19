@@ -539,30 +539,42 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             padded_mode=self.drop_and_pad,
         )
 
+        flash_scheduler = flash.get_flash()
+        flash_scheduler.schedule(self.flash_workload)
+
         # Perform expert parallel AlltoAll communication
         if self.cuda_sync_point == "before_ep_alltoall":
             torch.cuda.current_stream().synchronize()
+            flash_scheduler.synchronize_streams()
 
         # print("[Rank {}] - workload: {}".format(torch.distributed.get_rank(), self.flash_workload),flush=True)
         # print("[Rank {}] - input token splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
         # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
 
-        flash_scheduler = flash.get_flash()
-        flash_scheduler.schedule(self.flash_workload)
+
         global_input_tokens = tensor_parallel.flash_all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             permutated_local_input_tokens,
             self.output_splits,
             self.input_splits,
-            )
+        )
+        torch.cuda.current_stream().synchronize()
+        flash_scheduler.synchronize_streams()
 
-        # global_input_tokens_baseline = tensor_parallel.all_to_all(
-        #     parallel_state.get_expert_model_parallel_group(),
-        #     permutated_local_input_tokens,
-        #     self.output_splits,
-        #     self.input_splits,
-        # )
-        # print(torch.equal(global_input_tokens, global_input_tokens_baseline))
+
+        global_input_tokens_baseline = tensor_parallel.all_to_all(
+            parallel_state.get_expert_model_parallel_group(),
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+        )
+
+        torch.cuda.current_stream().synchronize()
+        flash_scheduler.synchronize_streams()
+        if not torch.equal(global_input_tokens, global_input_tokens_baseline):
+            print(global_input_tokens.cpu().numpy())
+            print(global_input_tokens_baseline.cpu().numpy())
+            raise AssertionError("alltoall values different")
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)
@@ -623,12 +635,38 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
 
         # Perform expert parallel AlltoAll communication
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-        permutated_local_input_tokens = tensor_parallel.all_to_all(
+        flash_scheduler = flash.get_flash()
+
+        permutated_local_input_tokens_baseline = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             hidden_states,
             self.input_splits,
             self.output_splits,
         )
+
+        torch.cuda.current_stream().synchronize()
+        flash_scheduler.synchronize_streams()
+
+        permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
+            parallel_state.get_expert_model_parallel_group(),
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+        )
+        torch.cuda.current_stream().synchronize()
+        flash_scheduler.synchronize_streams()
+
+        if not torch.equal(permutated_local_input_tokens, permutated_local_input_tokens_baseline):
+            print("hidden states: ")
+            print(hidden_states.size())
+            print("flash:")
+            print(permutated_local_input_tokens.size())
+            print(permutated_local_input_tokens.detach().float().cpu().numpy())
+            print("baseline:")
+            print(permutated_local_input_tokens_baseline.size())
+            print(permutated_local_input_tokens_baseline.detach().float().cpu().numpy())
+            raise AssertionError("alltoall values different")
+
         if self.shared_experts is not None:
             self.shared_experts.linear_fc2_forward(permutated_local_input_tokens)
             self.shared_experts.post_forward_comm()
