@@ -21,6 +21,7 @@ from megatron.core.transformer.moe.moe_utils import (
 )
 from megatron.core.transformer.moe.shared_experts import SharedExpertMLP
 from megatron.core.transformer.transformer_config import TransformerConfig
+import numpy as np
 
 """ We use the following notation throughout this file:
      H: hidden size
@@ -539,13 +540,9 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             padded_mode=self.drop_and_pad,
         )
 
-        flash_scheduler = flash.get_flash()
-        flash_scheduler.schedule(self.flash_workload)
-
         # Perform expert parallel AlltoAll communication
         if self.cuda_sync_point == "before_ep_alltoall":
             torch.cuda.current_stream().synchronize()
-            flash_scheduler.synchronize_streams()
 
         # print("[Rank {}] - workload: {}".format(torch.distributed.get_rank(), self.flash_workload),flush=True)
         # print("[Rank {}] - input token splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
@@ -553,14 +550,11 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
 
 
         global_input_tokens = tensor_parallel.flash_all_to_all(
-            parallel_state.get_expert_model_parallel_group(),
+            self.flash_workload,
             permutated_local_input_tokens,
             self.output_splits,
             self.input_splits,
         )
-        torch.cuda.current_stream().synchronize()
-        flash_scheduler.synchronize_streams()
-
 
         global_input_tokens_baseline = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
@@ -569,8 +563,6 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             self.input_splits,
         )
 
-        torch.cuda.current_stream().synchronize()
-        flash_scheduler.synchronize_streams()
         if not torch.equal(global_input_tokens, global_input_tokens_baseline):
             print(global_input_tokens.cpu().numpy())
             print(global_input_tokens_baseline.cpu().numpy())
@@ -635,7 +627,13 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
 
         # Perform expert parallel AlltoAll communication
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
-        flash_scheduler = flash.get_flash()
+
+        permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
+            np.transpose(self.flash_workload),
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+        )
 
         permutated_local_input_tokens_baseline = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
@@ -644,17 +642,6 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             self.output_splits,
         )
 
-        torch.cuda.current_stream().synchronize()
-        flash_scheduler.synchronize_streams()
-
-        permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
-            parallel_state.get_expert_model_parallel_group(),
-            hidden_states,
-            self.input_splits,
-            self.output_splits,
-        )
-        torch.cuda.current_stream().synchronize()
-        flash_scheduler.synchronize_streams()
 
         if not torch.equal(permutated_local_input_tokens, permutated_local_input_tokens_baseline):
             print("hidden states: ")

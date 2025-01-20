@@ -515,9 +515,9 @@ class _AllToAll(torch.autograd.Function):
 
 class _FLASHAllToAll(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, group, input, output_split_sizes, input_split_sizes):
+    def forward(ctx, workload, input, output_split_sizes, input_split_sizes):
         """Forward function."""
-        ctx.group = group
+        ctx.workload = workload
         ctx.output_split_sizes = output_split_sizes
         ctx.input_split_sizes = input_split_sizes
 
@@ -539,12 +539,10 @@ class _FLASHAllToAll(torch.autograd.Function):
         if server_n == 1:
             flash_scheduler.all_to_all_v(input, output, input_split_sizes, output_split_sizes)
         else:
-            print("flash node > 1")
+            flash_scheduler.schedule(workload)
             flash_scheduler.init_buffers(input, output)
             flash_scheduler.all_to_all()
             flash_scheduler.free_buffers()
-        torch.cuda.current_stream().synchronize()
-        flash_scheduler.synchronize_streams()
         return output
 
     @staticmethod
@@ -552,7 +550,7 @@ class _FLASHAllToAll(torch.autograd.Function):
         """Backward function."""
         return (
             None,
-            _FLASHAllToAll.apply(ctx.group, *grad_output, ctx.input_split_sizes, ctx.output_split_sizes),
+            _FLASHAllToAll.apply(np.transpose(ctx.workload), *grad_output, ctx.input_split_sizes, ctx.output_split_sizes),
             None,
             None,
         )
@@ -626,9 +624,9 @@ def all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
     """Wrapper for autograd function"""
     return _AllToAll.apply(group, input_, output_split_sizes_, input_split_sizes)
 
-def flash_all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
+def flash_all_to_all(workload, input_, output_split_sizes_=None, input_split_sizes=None):
     """Wrapper for autograd function"""
-    return _FLASHAllToAll.apply(group, input_, output_split_sizes_, input_split_sizes)
+    return _FLASHAllToAll.apply(workload, input_, output_split_sizes_, input_split_sizes)
 
 def all_to_all_sp2hp(input_):
     """
