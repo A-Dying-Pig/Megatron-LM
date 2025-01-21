@@ -541,24 +541,12 @@ class _FLASHAllToAll(torch.autograd.Function):
             flash_scheduler.all_to_all_v(input, output, input_split_sizes, output_split_sizes)
         else:
             flash_scheduler.schedule(workload)
-            buffer_szs = flash_scheduler.get_buffer_sz()
-            send_tensor = torch.zeros(size=[buffer_szs[0], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            lbsend_tensor = torch.zeros(size=[buffer_szs[1], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            lbrecv_tensor = torch.zeros(size=[buffer_szs[2], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            cros1_tensor = torch.zeros(size=[buffer_szs[3], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            cros2_tensor = torch.zeros(size=[buffer_szs[3], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            rstr_tensor = torch.zeros(size=[buffer_szs[4], hidden_sz],dtype=input.dtype,device=torch.cuda.current_device()).contiguous()
-            flash_scheduler.all_to_all_2(input, output, send_tensor,lbsend_tensor,lbrecv_tensor,cros1_tensor,cros2_tensor,rstr_tensor)
-            # del send_tensor
-            # del lbsend_tensor
-            # del lbrecv_tensor
-            # del cros1_tensor
-            # del cros2_tensor
-            # del rstr_tensor
+            # send_tensor,lbsend_tensor,lbrecv_tensor,cros1_tensor,cros2_tensor,rstr_tensor = flash.get_buffers()
+            # flash_scheduler.all_to_all_2(input, output, send_tensor,lbsend_tensor,lbrecv_tensor,cros1_tensor,cros2_tensor,rstr_tensor)
 
-            # flash_scheduler.init_buffers(input, output)
-            # flash_scheduler.all_to_all()
-            # flash_scheduler.free_buffers()
+            flash_scheduler.init_buffers(input, output)
+            flash_scheduler.all_to_all()
+            flash_scheduler.free_buffers()
         return output
 
     @staticmethod

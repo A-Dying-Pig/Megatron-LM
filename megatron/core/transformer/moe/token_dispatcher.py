@@ -565,6 +565,10 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
 
         cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
         if torch.distributed.get_rank() == 4:
+            print("input splits: ")
+            print(self.input_splits)
+            print("output splits: ")
+            print(self.output_splits)
             print(f"flash - rank {torch.distributed.get_rank()}")
             a1 = global_input_tokens.detach().float().cpu().numpy()
             print(a1)
@@ -574,6 +578,7 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             print("diff location: ")
             print(cmp.detach().cpu().numpy())
             print(cmp.detach().cpu().numpy().size)
+
 
         if cmp.numel():
             raise AssertionError("alltoall values different")
