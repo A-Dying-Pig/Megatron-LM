@@ -563,9 +563,19 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
             self.input_splits,
         )
 
-        if not torch.equal(global_input_tokens, global_input_tokens_baseline):
-            print(global_input_tokens.cpu().numpy())
-            print(global_input_tokens_baseline.cpu().numpy())
+        cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
+        if torch.distributed.get_rank() == 4:
+            print(f"flash - rank {torch.distributed.get_rank()}")
+            a1 = global_input_tokens.detach().float().cpu().numpy()
+            print(a1)
+            print("baseline: ")
+            a2 = global_input_tokens_baseline.detach().float().cpu().numpy()
+            print(a2)
+            print("diff location: ")
+            print(cmp.detach().cpu().numpy())
+            print(cmp.detach().cpu().numpy().size)
+
+        if cmp.numel():
             raise AssertionError("alltoall values different")
 
         if self.shared_experts is not None:
@@ -643,7 +653,9 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         )
 
 
-        if not torch.equal(permutated_local_input_tokens, permutated_local_input_tokens_baseline):
+        cmp = (permutated_local_input_tokens != permutated_local_input_tokens_baseline).nonzero()
+
+        if cmp.numel():
             print("hidden states: ")
             print(hidden_states.size())
             print("flash:")
