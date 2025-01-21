@@ -93,7 +93,7 @@ def add_workloads(workload):
     megatron_workloads.append(np.ravel(workload))
     print(stored_id)
     stored_id += 1
-    WRITE_FREQUENCY = 10
+    WRITE_FREQUENCY = 100
     if stored_id % WRITE_FREQUENCY == 0:
         with open("megatron_workload.txt", "a") as myfile:
             for i in range(stored_id - WRITE_FREQUENCY, stored_id):
