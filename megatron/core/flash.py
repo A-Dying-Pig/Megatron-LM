@@ -24,7 +24,7 @@ cros1_tensor = None
 cros2_tensor = None
 rstr_tensor = None
 megatron_workloads = []
-
+stored_id = 0
 
 def init_flash(args):
      # -----------------------------------------------------------------------
@@ -87,4 +87,15 @@ def get_flash():
 def get_buffers():
     return send_tensor, lbsend_tensor, lbrecv_tensor, cros1_tensor, cros2_tensor, rstr_tensor
 
-def add_workloads():
+def add_workloads(workload):
+    global megatron_workloads
+    global stored_id
+    megatron_workloads.append(np.ravel(workload))
+    print(stored_id)
+    stored_id += 1
+    WRITE_FREQUENCY = 10
+    if stored_id % WRITE_FREQUENCY == 0:
+        with open("megatron_workload.txt", "a") as myfile:
+            for i in range(stored_id - WRITE_FREQUENCY, stored_id):
+                for idx in range(megatron_workloads[i].shape[0]):
+                     myfile.write(f"{megatron_workloads[i][idx]}\n")

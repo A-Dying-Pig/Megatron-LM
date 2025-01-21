@@ -549,39 +549,42 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
 
 
-        global_input_tokens = tensor_parallel.flash_all_to_all(
-            self.flash_workload,
-            permutated_local_input_tokens,
-            self.output_splits,
-            self.input_splits,
-        )
+        # global_input_tokens = tensor_parallel.flash_all_to_all(
+        #     self.flash_workload,
+        #     permutated_local_input_tokens,
+        #     self.output_splits,
+        #     self.input_splits,
+        # )
 
-        global_input_tokens_baseline = tensor_parallel.all_to_all(
+        if torch.distributed.get_rank() == 0:
+            flash.add_workloads(self.flash_workload)
+
+        global_input_tokens = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             permutated_local_input_tokens,
             self.output_splits,
             self.input_splits,
         )
 
-        cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
-        if torch.distributed.get_rank() == 4:
-            print("input splits: ")
-            print(self.input_splits)
-            print("output splits: ")
-            print(self.output_splits)
-            print(f"flash - rank {torch.distributed.get_rank()}")
-            a1 = global_input_tokens.detach().float().cpu().numpy()
-            print(a1)
-            print("baseline: ")
-            a2 = global_input_tokens_baseline.detach().float().cpu().numpy()
-            print(a2)
-            print("diff location: ")
-            print(cmp.detach().cpu().numpy())
-            print(cmp.detach().cpu().numpy().size)
+        # cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
+        # if torch.distributed.get_rank() == 4:
+        #     print("input splits: ")
+        #     print(self.input_splits)
+        #     print("output splits: ")
+        #     print(self.output_splits)
+        #     print(f"flash - rank {torch.distributed.get_rank()}")
+        #     a1 = global_input_tokens.detach().float().cpu().numpy()
+        #     print(a1)
+        #     print("baseline: ")
+        #     a2 = global_input_tokens_baseline.detach().float().cpu().numpy()
+        #     print(a2)
+        #     print("diff location: ")
+        #     print(cmp.detach().cpu().numpy())
+        #     print(cmp.detach().cpu().numpy().size)
 
 
-        if cmp.numel():
-            raise AssertionError("alltoall values different")
+        # if cmp.numel():
+        #     raise AssertionError("alltoall values different")
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)
@@ -643,14 +646,14 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # Perform expert parallel AlltoAll communication
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
 
-        permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
-            np.transpose(self.flash_workload),
-            hidden_states,
-            self.input_splits,
-            self.output_splits,
-        )
+        # permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
+        #     np.transpose(self.flash_workload),
+        #     hidden_states,
+        #     self.input_splits,
+        #     self.output_splits,
+        # )
 
-        permutated_local_input_tokens_baseline = tensor_parallel.all_to_all(
+        permutated_local_input_tokens = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             hidden_states,
             self.input_splits,
@@ -658,18 +661,18 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         )
 
 
-        cmp = (permutated_local_input_tokens != permutated_local_input_tokens_baseline).nonzero()
+        # cmp = (permutated_local_input_tokens != permutated_local_input_tokens_baseline).nonzero()
 
-        if cmp.numel():
-            print("hidden states: ")
-            print(hidden_states.size())
-            print("flash:")
-            print(permutated_local_input_tokens.size())
-            print(permutated_local_input_tokens.detach().float().cpu().numpy())
-            print("baseline:")
-            print(permutated_local_input_tokens_baseline.size())
-            print(permutated_local_input_tokens_baseline.detach().float().cpu().numpy())
-            raise AssertionError("alltoall values different")
+        # if cmp.numel():
+        #     print("hidden states: ")
+        #     print(hidden_states.size())
+        #     print("flash:")
+        #     print(permutated_local_input_tokens.size())
+        #     print(permutated_local_input_tokens.detach().float().cpu().numpy())
+        #     print("baseline:")
+        #     print(permutated_local_input_tokens_baseline.size())
+        #     print(permutated_local_input_tokens_baseline.detach().float().cpu().numpy())
+        #     raise AssertionError("alltoall values different")
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc2_forward(permutated_local_input_tokens)
