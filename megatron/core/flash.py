@@ -17,14 +17,12 @@ import fastalltoall.FlashAllToAll
 import numpy as np
 
 flash_scheduler = None
-send_tensor = None
-lbsend_tensor = None
-lbrecv_tensor = None
-cros1_tensor = None
-cros2_tensor = None
-rstr_tensor = None
+buffer_tensors = None
 megatron_workloads = []
 stored_id = 0
+hidden_size = 0
+local_rank = 0
+params_dtype = None
 
 def init_flash(args):
      # -----------------------------------------------------------------------
@@ -33,6 +31,7 @@ def init_flash(args):
     device_count = torch.cuda.device_count()
     this_rank = torch.distributed.get_rank()
     world_size = torch.distributed.get_world_size()
+    print(f"this rank: {this_rank}, current rank: {os.environ['RANK']}, local rank: {args.local_rank}")
     master_addr = os.environ['MASTER_ADDR']
     master_port = 31000
     if this_rank == 0:
@@ -58,21 +57,18 @@ def init_flash(args):
         torch.int32: 2,
         torch.int64: 4
     }
+    global hidden_size
+    hidden_size = args.hidden_size
+    global params_dtype
+    params_dtype = args.params_dtype
+    global local_rank
+    local_rank = this_rank % device_count
     global flash_scheduler
     flash_scheduler = fastalltoall.FlashAllToAll.flash_t(this_rank, world_size, world_size // device_count, device_count, args.hidden_size, torch_dtype_map[args.params_dtype], id_str)
-    global send_tensor
-    global lbsend_tensor
-    global lbrecv_tensor
-    global cros1_tensor
-    global cros2_tensor
-    global rstr_tensor
-    send_tensor = torch.zeros(size=[204800, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-    lbsend_tensor = torch.zeros(size=[2048, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-    lbrecv_tensor = torch.zeros(size=[2048, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-    cros1_tensor = torch.zeros(size=[204800, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-    cros2_tensor = torch.zeros(size=[204800, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-    rstr_tensor = torch.zeros(size=[102400, args.hidden_size],dtype=args.params_dtype,device=torch.cuda.current_device()).contiguous()
-
+    global buffer_tensors
+    buffer_tensors = []
+    for i in range(6):
+        buffer_tensors.append(torch.zeros(size=[2048, args.hidden_size],dtype=args.params_dtype,device=f"cuda:{local_rank}", requires_grad=False).contiguous())
     # -----------------------------------------------------------------------
     # END OF FLASH INITIALIATION
     # -----------------------------------------------------------------------
@@ -84,8 +80,15 @@ def get_flash():
     ), 'flash scheduler is not initialized'
     return flash_scheduler
 
-def get_buffers():
-    return send_tensor, lbsend_tensor, lbrecv_tensor, cros1_tensor, cros2_tensor, rstr_tensor
+def get_buffers(buffer_szs):
+    global buffer_tensors
+    for i in range(6):
+        if buffer_szs[i] >= buffer_tensors[i].size(dim=0):
+            prev_tensor = buffer_tensors[i]
+            buffer_tensors[i] = torch.zeros(size=[buffer_szs[i] * 2, hidden_size],dtype=params_dtype,device=f"cuda:{local_rank}", requires_grad=False).contiguous()
+            del prev_tensor
+    return buffer_tensors
+
 
 def add_workloads(workload):
     global megatron_workloads

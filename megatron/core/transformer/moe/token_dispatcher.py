@@ -549,25 +549,22 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
 
 
-        # global_input_tokens = tensor_parallel.flash_all_to_all(
-        #     self.flash_workload,
-        #     permutated_local_input_tokens,
-        #     self.output_splits,
-        #     self.input_splits,
-        # )
+        global_input_tokens = tensor_parallel.flash_all_to_all(
+            self.flash_workload,
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+        )
 
-        if torch.distributed.get_rank() == 0:
-            flash.add_workloads(self.flash_workload)
-
-        global_input_tokens = tensor_parallel.all_to_all(
+        global_input_tokens_baseline = tensor_parallel.all_to_all(
             parallel_state.get_expert_model_parallel_group(),
             permutated_local_input_tokens,
             self.output_splits,
             self.input_splits,
         )
 
-        # cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
-        # if torch.distributed.get_rank() == 4:
+        cmp = (global_input_tokens != global_input_tokens_baseline).nonzero()
+        # if torch.distributed.get_rank() == 5:
         #     print("input splits: ")
         #     print(self.input_splits)
         #     print("output splits: ")
@@ -583,8 +580,8 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         #     print(cmp.detach().cpu().numpy().size)
 
 
-        # if cmp.numel():
-        #     raise AssertionError("alltoall values different")
+        if cmp.numel():
+            raise AssertionError("alltoall values different")
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)
