@@ -625,7 +625,7 @@ def all_to_all(group, input_, output_split_sizes_=None, input_split_sizes=None):
     """Wrapper for autograd function"""
     return _AllToAll.apply(group, input_, output_split_sizes_, input_split_sizes)
 
-def flash_all_to_all(workload, input_, output_split_sizes_=None, input_split_sizes=None):
+def flash_all_to_all(workload, input_, output_split_sizes_, input_split_sizes):
     """Wrapper for autograd function"""
     return _FLASHAllToAll.apply(workload, input_, output_split_sizes_, input_split_sizes, 0)
 

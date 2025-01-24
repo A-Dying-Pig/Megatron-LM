@@ -23,6 +23,7 @@ stored_id = 0
 hidden_size = 0
 local_rank = 0
 params_dtype = None
+Timestamps = [[], [], [], []]
 
 def init_flash(args):
      # -----------------------------------------------------------------------
@@ -102,3 +103,5 @@ def add_workloads(workload):
             for i in range(stored_id - WRITE_FREQUENCY, stored_id):
                 for idx in range(megatron_workloads[i].shape[0]):
                      myfile.write(f"{megatron_workloads[i][idx]}\n")
+
+def record_timestamp(idx, if_print):

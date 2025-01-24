@@ -548,23 +548,38 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # print("[Rank {}] - input token splits: {}".format(torch.distributed.get_rank(), self.input_splits),flush=True)
         # print("[Rank {}] - output token splits: {}".format(torch.distributed.get_rank(), self.output_splits),flush=True)
 
+        t1 = torch.cuda.Event(enable_timing=True)
+        t2 = torch.cuda.Event(enable_timing=True)
+        t3 = torch.cuda.Event(enable_timing=True)
+        t4 = torch.cuda.Event(enable_timing=True)
 
+        t1.record()
         global_input_tokens = tensor_parallel.flash_all_to_all(
             self.flash_workload,
             permutated_local_input_tokens,
             self.output_splits,
             self.input_splits,
         )
+        t2.record()
+        torch.cuda.current_stream().synchronize()
+        t3.record()
+        global_input_tokens_baselines = tensor_parallel.all_to_all(
+            parallel_state.get_expert_model_parallel_group(),
+            permutated_local_input_tokens,
+            self.output_splits,
+            self.input_splits,
+        )
+        t4.record()
+        torch.cuda.current_stream().synchronize()
+        if torch.distributed.get_rank() == 0:
+            print(f"flash: {t1.elapsed_time(t2)} ms, rccl: {t3.elapsed_time(t4)} ms")
 
-        # global_input_tokens = tensor_parallel.all_to_all(
-        #     parallel_state.get_expert_model_parallel_group(),
-        #     permutated_local_input_tokens,
-        #     self.output_splits,
-        #     self.input_splits,
-        # )
+        assert torch.equal(global_input_tokens, global_input_tokens_baselines)
+
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc1_forward_and_act(global_input_tokens)
+
 
         if parallel_state.get_tensor_model_parallel_world_size() > 1:
             global_input_tokens = gather_from_sequence_parallel_region(
@@ -612,6 +627,7 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
                 self.restore_output_by_local_experts,
             )
 
+
         if parallel_state.get_tensor_model_parallel_world_size() > 1:
             hidden_states = reduce_scatter_to_sequence_parallel_region(
                 hidden_states,
@@ -623,19 +639,19 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         # Perform expert parallel AlltoAll communication
         # hidden_states: [SEQL, H] -> [SEQL, H/TP]
 
-        permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
-            np.transpose(self.flash_workload).copy(order='C'),
-            hidden_states,
-            self.input_splits,
-            self.output_splits,
-        )
-
-        # permutated_local_input_tokens_baseline = tensor_parallel.all_to_all(
-        #     parallel_state.get_expert_model_parallel_group(),
+        # permutated_local_input_tokens = tensor_parallel.flash_all_to_all(
+        #     np.transpose(self.flash_workload).copy(order='C'),
         #     hidden_states,
         #     self.input_splits,
         #     self.output_splits,
         # )
+
+        permutated_local_input_tokens = tensor_parallel.all_to_all(
+            parallel_state.get_expert_model_parallel_group(),
+            hidden_states,
+            self.input_splits,
+            self.output_splits,
+        )
 
         if self.shared_experts is not None:
             self.shared_experts.linear_fc2_forward(permutated_local_input_tokens)

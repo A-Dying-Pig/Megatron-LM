@@ -5,13 +5,14 @@
 # To check the performance of a Dropless MoE model, we should run the model for at least 500 iterations or resume from trained checkpoints.
 
 export CUDA_DEVICE_MAX_CONNECTIONS=1
+export NCCL_BLOCKING_WAIT=0
 
 GPUS_PER_NODE=8
 # Change for multinode config
 MASTER_ADDR=10.4.16.1
 MASTER_PORT=30000
-NNODES=2
-NODE_RANK=1
+NNODES=4
+NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
 CHECKPOINT_PATH=$1
@@ -28,12 +29,12 @@ DISTRIBUTED_ARGS=(
 
 MODEL_ARGS=(
     --disable-bias-linear
-    --seq-length 4096
-    --max-position-embeddings 32768
+    --seq-length 2048
+    --max-position-embeddings 4096
     --num-layers 32
     --hidden-size 4096
-    --ffn-hidden-size 14336
-    --num-attention-heads 32
+    --ffn-hidden-size 7168
+    --num-attention-heads 16
     --init-method-std 0.01
     --attention-dropout 0.0
     --hidden-dropout 0.0
@@ -49,8 +50,8 @@ MODEL_ARGS=(
 )
 
 MOE_ARGS=(
-    --num-experts 16        #logic experts
-    --expert-model-parallel-size 16  # number of GPUs to hold experts
+    --num-experts 32        #logic experts
+    --expert-model-parallel-size 32  # number of GPUs to hold experts
     --moe-router-load-balancing-type aux_loss # options: aux_loss, sinkhorn, None. Default is aux_loss.
     --moe-router-topk 2
     --moe-aux-loss-coeff 1e-2
@@ -60,15 +61,15 @@ MOE_ARGS=(
 
 DATA_ARGS=(
     --tokenizer-type GPT2BPETokenizer
-    --vocab-file /data/MBA/data_dongjoo/gpt2-vocab.json
-    --merge-file /data/MBA/data_dongjoo/gpt2-merges.txt
+    --vocab-file /root/megatron_data/gpt2-vocab.json
+    --merge-file /root/megatron_data/gpt2-merges.txt
     --data-path $DATA_PATH
     --split 10000,8,2
 )
 
 TRAINING_ARGS=(
     --micro-batch-size 1
-    --global-batch-size 1024
+    --global-batch-size 32
     --adam-beta1 0.9
     --adam-beta2 0.95
     --lr 1e-7
@@ -92,6 +93,7 @@ MODEL_PARALLEL_ARGS=(
 
 LOGGING_ARGS=(
     --log-interval 1 \
+    --log-throughput \
     --save-interval 10000 \
     --eval-interval 1000 \
     --eval-iters 10 \
