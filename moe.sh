@@ -34,7 +34,7 @@ MODEL_ARGS=(
     --num-layers 32
     --hidden-size 4096
     --ffn-hidden-size 7168
-    --num-attention-heads 16
+    --num-attention-heads 32
     --init-method-std 0.01
     --attention-dropout 0.0
     --hidden-dropout 0.0
@@ -68,8 +68,8 @@ DATA_ARGS=(
 )
 
 TRAINING_ARGS=(
-    --micro-batch-size 1
-    --global-batch-size 32
+    --micro-batch-size 2
+    --global-batch-size 64
     --adam-beta1 0.9
     --adam-beta2 0.95
     --lr 1e-7

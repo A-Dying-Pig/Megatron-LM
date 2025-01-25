@@ -572,7 +572,9 @@ class MoEAlltoAllTokenDispatcher(MoETokenDispatcher):
         t4.record()
         torch.cuda.current_stream().synchronize()
         if torch.distributed.get_rank() == 0:
-            print(f"flash: {t1.elapsed_time(t2)} ms, rccl: {t3.elapsed_time(t4)} ms")
+            flash.record_timestamp(0, t1.elapsed_time(t2), False)
+            flash.record_timestamp(1, t3.elapsed_time(t4), False)
+            flash.add_workloads(self.flash_workload)
 
         assert torch.equal(global_input_tokens, global_input_tokens_baselines)
 

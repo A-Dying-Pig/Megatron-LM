@@ -99,9 +99,17 @@ def add_workloads(workload):
     stored_id += 1
     WRITE_FREQUENCY = 100
     if stored_id % WRITE_FREQUENCY == 0:
-        with open("megatron_workload.txt", "a") as myfile:
+        with open("4n_megatron_workload.txt", "a") as myfile:
             for i in range(stored_id - WRITE_FREQUENCY, stored_id):
                 for idx in range(megatron_workloads[i].shape[0]):
                      myfile.write(f"{megatron_workloads[i][idx]}\n")
 
-def record_timestamp(idx, if_print):
+
+def record_timestamp(idx, ts, if_print):
+    global Timestamps
+    Timestamps[idx].append(ts)
+    if if_print:
+        print(f"timestamp: {ts} ms")
+    if len(Timestamps[idx]) % 100 == 0:
+        for i in range(4):
+            print(f"idx {i} ts sum: {np.sum(Timestamps[i])} ms")
