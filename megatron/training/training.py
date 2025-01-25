@@ -999,6 +999,8 @@ def training_log(loss_dict, total_loss_dict, learning_rate, decoupled_learning_r
         log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(
             elapsed_time_per_iteration * 1000.0)
         if args.log_throughput:
+            if torch.distributed.get_rank() == 0:
+                flash.record_throughput(throughput)
             log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
             if args.log_timers_to_tensorboard:
                 if writer:

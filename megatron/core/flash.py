@@ -24,6 +24,11 @@ hidden_size = 0
 local_rank = 0
 params_dtype = None
 Timestamps = [[], [], [], []]
+if_use_flash = None
+
+
+moe_throughput_iteration = []
+iteration_id = 0
 
 def init_flash(args):
      # -----------------------------------------------------------------------
@@ -70,6 +75,9 @@ def init_flash(args):
     buffer_tensors = []
     for i in range(6):
         buffer_tensors.append(torch.zeros(size=[2048, args.hidden_size],dtype=args.params_dtype,device=f"cuda:{local_rank}", requires_grad=False).contiguous())
+
+    global if_use_flash
+    if_use_flash = True
     # -----------------------------------------------------------------------
     # END OF FLASH INITIALIATION
     # -----------------------------------------------------------------------
@@ -80,6 +88,7 @@ def get_flash():
         flash_scheduler is not None
     ), 'flash scheduler is not initialized'
     return flash_scheduler
+
 
 def get_buffers(buffer_szs):
     global buffer_tensors
@@ -113,3 +122,18 @@ def record_timestamp(idx, ts, if_print):
     if len(Timestamps[idx]) % 100 == 0:
         for i in range(4):
             print(f"idx {i} ts sum: {np.sum(Timestamps[i])} ms")
+
+
+def record_throughput(tput):
+    global moe_throughput_iteration
+    global iteration_id
+    global if_use_flash
+    moe_throughput_iteration.append(tput)
+    iteration_id += 1
+    WRITE_FREQUENCY = 20
+    print(f"Iteration {iteration_id}, tput: {tput}")
+    if iteration_id % WRITE_FREQUENCY == 0:
+        with open(f"2n_perf_e16_t2_" + ("flash" if if_use_flash else "rccl" ) + ".txt", "a") as myfile:
+            for i in range(iteration_id - WRITE_FREQUENCY, iteration_id):
+                myfile.write(f"{moe_throughput_iteration[i]:.1f}\n")
+
