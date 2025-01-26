@@ -9,9 +9,9 @@ export NCCL_BLOCKING_WAIT=0
 
 GPUS_PER_NODE=8
 # Change for multinode config
-MASTER_ADDR=10.4.16.2
+MASTER_ADDR=10.4.16.1
 MASTER_PORT=30000
-NNODES=2
+NNODES=4
 NODE_RANK=0
 WORLD_SIZE=$(($GPUS_PER_NODE*$NNODES))
 
@@ -50,10 +50,10 @@ MODEL_ARGS=(
 )
 
 MOE_ARGS=(
-    --num-experts 16        #logic experts
-    --expert-model-parallel-size 16  # number of GPUs to hold experts
+    --num-experts 32        #logic experts
+    --expert-model-parallel-size 32  # number of GPUs to hold experts
     --moe-router-load-balancing-type aux_loss # options: aux_loss, sinkhorn, None. Default is aux_loss.
-    --moe-router-topk 2
+    --moe-router-topk 4
     --moe-aux-loss-coeff 1e-2
     --moe-grouped-gemm
     --moe-token-dispatcher-type alltoall
@@ -69,7 +69,7 @@ DATA_ARGS=(
 
 TRAINING_ARGS=(
     --micro-batch-size 2
-    --global-batch-size 32
+    --global-batch-size 64
     --adam-beta1 0.9
     --adam-beta2 0.95
     --lr 1e-7

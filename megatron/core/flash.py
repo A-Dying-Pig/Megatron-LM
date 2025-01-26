@@ -130,10 +130,10 @@ def record_throughput(tput):
     global if_use_flash
     moe_throughput_iteration.append(tput)
     iteration_id += 1
-    WRITE_FREQUENCY = 20
+    WRITE_FREQUENCY = 10
     print(f"Iteration {iteration_id}, tput: {tput}")
     if iteration_id % WRITE_FREQUENCY == 0:
-        with open(f"2n_perf_e16_t2_" + ("flash" if if_use_flash else "rccl" ) + ".txt", "a") as myfile:
+        with open(f"4n_perf_e32_t4_" + ("flash" if if_use_flash else "rccl" ) + ".txt", "a") as myfile:
             for i in range(iteration_id - WRITE_FREQUENCY, iteration_id):
                 myfile.write(f"{moe_throughput_iteration[i]:.1f}\n")
 
